@@ -1,0 +1,2 @@
+openai-whisper==20240930
+redis==5.2.1
