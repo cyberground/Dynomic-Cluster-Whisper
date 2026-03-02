@@ -1,19 +1,21 @@
 """
 Dynomic Whisper Cluster — API Service
 Nimmt Audio-Dateien entgegen, erstellt Jobs in Redis und liefert Ergebnisse.
+Alle Endpoints (ausser /health) sind per X-API-Key geschuetzt.
 """
 import os
-import json
 import time
 import logging
 from uuid import uuid4
-from fastapi import FastAPI, UploadFile, File, Query, HTTPException
+from fastapi import FastAPI, UploadFile, File, Query, HTTPException, Security
+from fastapi.security import APIKeyHeader
 from fastapi.responses import JSONResponse
 from redis_client import client, QUEUE_KEY, JOB_PREFIX
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [API] %(message)s")
 logger = logging.getLogger(__name__)
 
+API_KEY = os.getenv("API_KEY", "")
 JOB_TTL = int(os.getenv("JOB_TTL", "3600"))  # Jobs nach 1h aufraemen
 UPLOAD_DIR = "/tmp/whisper-jobs"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -21,9 +23,28 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 app = FastAPI(
     title="Dynomic Whisper Cluster",
     description="Async ASR Job Queue mit Redis + Whisper Workers",
-    version="1.0.0",
+    version="1.1.0",
 )
 
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
+
+def require_api_key(key: str = Security(api_key_header)):
+    """Prueft den X-API-Key Header gegen die Umgebungsvariable API_KEY."""
+    if not API_KEY:
+        raise HTTPException(status_code=500, detail="API_KEY nicht konfiguriert")
+    if key != API_KEY:
+        raise HTTPException(status_code=401, detail="Ungueltiger oder fehlender API-Key")
+    return key
+
+
+# ---------------------------------------------------------------------------
+# Health (kein Auth — fuer Coolify / Load Balancer)
+# ---------------------------------------------------------------------------
 
 @app.get("/health")
 def health():
@@ -36,11 +57,16 @@ def health():
         return JSONResponse(status_code=503, content={"status": "error", "detail": str(e)})
 
 
+# ---------------------------------------------------------------------------
+# Endpoints (alle mit Auth)
+# ---------------------------------------------------------------------------
+
 @app.post("/asr-job")
 async def create_asr_job(
     file: UploadFile = File(...),
     language: str = Query("de", description="Sprache (de, en, auto)"),
     task: str = Query("transcribe", description="Task: transcribe oder translate"),
+    _key: str = Security(require_api_key),
 ):
     """
     Audio-Datei hochladen und ASR-Job erstellen.
@@ -83,7 +109,7 @@ async def create_asr_job(
 
 
 @app.get("/status/{job_id}")
-def get_status(job_id: str):
+def get_status(job_id: str, _key: str = Security(require_api_key)):
     """Job-Status abfragen (queued, processing, done, failed)."""
     job_key = f"{JOB_PREFIX}{job_id}"
     status = client.hget(job_key, "status")
@@ -107,7 +133,7 @@ def get_status(job_id: str):
 
 
 @app.get("/result/{job_id}")
-def get_result(job_id: str):
+def get_result(job_id: str, _key: str = Security(require_api_key)):
     """
     Transkript abholen. Gibt 200 + transcript zurueck wenn fertig,
     oder aktuellen Status wenn noch nicht done.
@@ -142,7 +168,7 @@ def get_result(job_id: str):
 
 
 @app.delete("/job/{job_id}")
-def delete_job(job_id: str):
+def delete_job(job_id: str, _key: str = Security(require_api_key)):
     """Job und zugehoerige Audiodatei loeschen."""
     job_key = f"{JOB_PREFIX}{job_id}"
     file_path = client.hget(job_key, "file_path")
@@ -159,7 +185,7 @@ def delete_job(job_id: str):
 
 
 @app.get("/queue")
-def queue_info():
+def queue_info(_key: str = Security(require_api_key)):
     """Queue-Status: Wie viele Jobs warten, wie viele in Bearbeitung."""
     queue_len = client.llen(QUEUE_KEY)
 

@@ -19,6 +19,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - JOB_TTL=3600
+      - API_KEY=${API_KEY}
     depends_on:
       redis:
         condition: service_healthy
