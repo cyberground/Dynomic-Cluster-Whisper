@@ -7,3 +7,6 @@ dist/
 build/
 .vscode/
 .idea/
+
+# Interne Dokumentation — gehoert NICHT ins oeffentliche Repo!
+DOKU.md
