@@ -1,3 +1,28 @@
+version: "3.9"
+services:
+  redis:
+    image: redis:7-alpine
+    restart: always
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+  api:
+    build: ./api
+    restart: always
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JOB_TTL=3600
+      - API_KEY=${API_KEY}
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - shared_audio:/tmp/whisper-jobs
   worker_1:
     build: ./worker
     restart: always
@@ -15,7 +40,6 @@
       resources:
         limits:
           memory: 1G
-
   worker_2:
     build: ./worker
     restart: always
@@ -33,3 +57,13 @@
       resources:
         limits:
           memory: 1G
+  nginx:
+    build: ./nginx
+    restart: always
+    ports:
+      - "9002:80"
+    depends_on:
+      - api
+volumes:
+  redis_data:
+  shared_audio:
