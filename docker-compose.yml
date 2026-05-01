@@ -1,15 +1,20 @@
-version: "3.9"
+version: '3.9'
+
 services:
   redis:
-    image: redis:7-alpine
+    image: 'redis:7-alpine'
     restart: always
     volumes:
-      - redis_data:/data
+      - 'redis_data:/data'
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test:
+        - CMD
+        - redis-cli
+        - ping
       interval: 10s
       timeout: 3s
       retries: 3
+
   api:
     build: ./api
     restart: always
@@ -17,15 +22,17 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - JOB_TTL=3600
-      - API_KEY=${API_KEY}
+      - 'API_KEY=${API_KEY}'
     depends_on:
       redis:
         condition: service_healthy
     volumes:
-      - shared_audio:/tmp/whisper-jobs
+      - 'shared_audio:/tmp/whisper-jobs'
+
   worker_1:
     build: ./worker
     restart: always
+    mem_limit: 3g
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -35,35 +42,16 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - shared_audio:/tmp/whisper-jobs
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-  worker_2:
-    build: ./worker
-    restart: always
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - ASR_MODEL=base
-      - WORKER_ID=worker_2
-    depends_on:
-      redis:
-        condition: service_healthy
-    volumes:
-      - shared_audio:/tmp/whisper-jobs
-    deploy:
-      resources:
-        limits:
-          memory: 1G
+      - 'shared_audio:/tmp/whisper-jobs'
+
   nginx:
     build: ./nginx
     restart: always
     ports:
-      - "9002:80"
+      - '9002:80'
     depends_on:
       - api
+
 volumes:
-  redis_data:
-  shared_audio:
+  redis_data: null
+  shared_audio: null
